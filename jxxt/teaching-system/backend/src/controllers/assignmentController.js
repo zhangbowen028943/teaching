@@ -5,6 +5,7 @@ const Submission = require('../models/Submission');
 exports.getAssignments = async (req, res, next) => {
   try {
     const { course } = req.query;
+    const { skip, limit, sort } = req.pagination;
     const filter = {};
 
     if (course) filter.course = course;
@@ -19,12 +20,17 @@ exports.getAssignments = async (req, res, next) => {
       filter.teacher = req.user._id;
     }
 
-    const assignments = await Assignment.find(filter)
-      .populate('course', 'name code')
-      .populate('teacher', 'username')
-      .sort({ createdAt: -1 });
+    const [assignments, total] = await Promise.all([
+      Assignment.find(filter)
+        .populate('course', 'name code')
+        .populate('teacher', 'username')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+      Assignment.countDocuments(filter),
+    ]);
 
-    res.json({ success: true, data: assignments });
+    res.paginate(assignments, total);
   } catch (error) {
     next(error);
   }

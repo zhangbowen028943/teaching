@@ -3,22 +3,32 @@ const User = require('../models/User');
 exports.getUsers = async (req, res, next) => {
   try {
     const { role, search } = req.query;
+    const { skip, limit, sort, search: paginationSearch, searchFields } = req.pagination;
     const filter = {};
 
     if (role) filter.role = role;
-    if (search) {
-      filter.$or = [
-        { username: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-      ];
+
+    // 优先使用 pagination 的 search，其次使用 query 中的 search
+    const searchTerm = paginationSearch || search;
+    if (searchTerm) {
+      if (searchFields.length > 0) {
+        filter.$or = searchFields.map((field) => ({
+          [field]: { $regex: searchTerm, $options: 'i' },
+        }));
+      } else {
+        filter.$or = [
+          { username: { $regex: searchTerm, $options: 'i' } },
+          { email: { $regex: searchTerm, $options: 'i' } },
+        ];
+      }
     }
 
-    const users = await User.find(filter).select('-password').sort({ createdAt: -1 });
+    const [users, total] = await Promise.all([
+      User.find(filter).select('-password').sort(sort).skip(skip).limit(limit),
+      User.countDocuments(filter),
+    ]);
 
-    res.json({
-      success: true,
-      data: users,
-    });
+    res.paginate(users, total);
   } catch (error) {
     next(error);
   }

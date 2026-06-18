@@ -4,13 +4,22 @@ const User = require('../models/User');
 exports.getCourses = async (req, res, next) => {
   try {
     const { search, teacher } = req.query;
+    const { skip, limit, sort, search: paginationSearch, searchFields } = req.pagination;
     const filter = {};
 
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { code: { $regex: search, $options: 'i' } },
-      ];
+    // 优先使用 pagination 的 search，其次使用 query 中的 search
+    const searchTerm = paginationSearch || search;
+    if (searchTerm) {
+      if (searchFields.length > 0) {
+        filter.$or = searchFields.map((field) => ({
+          [field]: { $regex: searchTerm, $options: 'i' },
+        }));
+      } else {
+        filter.$or = [
+          { name: { $regex: searchTerm, $options: 'i' } },
+          { code: { $regex: searchTerm, $options: 'i' } },
+        ];
+      }
     }
     if (teacher) filter.teacher = teacher;
 
@@ -24,12 +33,17 @@ exports.getCourses = async (req, res, next) => {
       filter.teacher = req.user._id;
     }
 
-    const courses = await Course.find(filter)
-      .populate('teacher', 'username email')
-      .populate('students', 'username email')
-      .sort({ createdAt: -1 });
+    const [courses, total] = await Promise.all([
+      Course.find(filter)
+        .populate('teacher', 'username email')
+        .populate('students', 'username email')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+      Course.countDocuments(filter),
+    ]);
 
-    res.json({ success: true, data: courses });
+    res.paginate(courses, total);
   } catch (error) {
     next(error);
   }

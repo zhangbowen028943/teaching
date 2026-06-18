@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Course = require('../models/Course');
+const logger = require('../config/logger');
 
 const seedData = async () => {
   try {
@@ -59,9 +60,9 @@ const seedData = async () => {
       credits: 3,
     });
 
-    console.log('Seed data created successfully');
+    logger.info('Seed data created successfully');
   } catch (error) {
-    console.error('Seed data error:', error.message);
+    logger.error('Seed data error:', error.message);
   }
 };
 

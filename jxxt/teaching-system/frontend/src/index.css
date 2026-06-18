@@ -28,3 +28,89 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ========== 响应式断点样式 ========== */
+
+/* 平板及以下（<=768px） */
+@media (max-width: 768px) {
+  /* 侧边栏折叠 */
+  .ant-layout-sider {
+    position: fixed !important;
+    z-index: 100;
+    height: 100vh;
+  }
+
+  /* 主内容区减少内边距 */
+  .ant-layout-content {
+    padding: 12px !important;
+  }
+
+  /* 卡片间距调整 */
+  .ant-card {
+    margin-bottom: 12px !important;
+  }
+
+  /* 表格横向滚动 */
+  .ant-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .ant-table {
+    min-width: 600px;
+  }
+}
+
+/* 手机端（<=576px） */
+@media (max-width: 576px) {
+  /* 导航栏适配 */
+  .ant-layout-header {
+    padding: 0 12px !important;
+  }
+
+  /* 内容区进一步减少内边距 */
+  .ant-layout-content {
+    padding: 8px !important;
+  }
+
+  /* 卡片间距更紧凑 */
+  .ant-card {
+    margin-bottom: 8px !important;
+  }
+
+  /* 面包屑导航在小屏幕上缩小字体 */
+  .ant-breadcrumb {
+    font-size: 12px;
+  }
+
+  /* 按钮组在小屏幕上自适应 */
+  .ant-space {
+    gap: 4px !important;
+  }
+
+  /* 表格最小宽度适配手机 */
+  .ant-table {
+    min-width: 480px;
+  }
+
+  /* 表单在小屏幕上全宽 */
+  .ant-form-item {
+    margin-bottom: 12px;
+  }
+
+  /* 统计卡片在小屏幕上调整 */
+  .ant-statistic-title {
+    font-size: 12px;
+  }
+
+  .ant-statistic-content {
+    font-size: 20px;
+  }
+}
+
+/* 桌面端大屏（>=1200px） */
+@media (min-width: 1200px) {
+  .ant-layout-content {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+}

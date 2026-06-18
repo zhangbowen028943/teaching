@@ -1,19 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Tag, Popconfirm, Upload } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, EyeOutlined } from '@ant-design/icons';
+import React, { useState, useCallback } from 'react';
+import { Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, Tag, Popconfirm, message } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import DataTable from '../components/DataTable';
 import api from '../services/api';
 import moment from 'moment';
 
 const Assignments = () => {
-  const [assignments, setAssignments] = useState([]);
   const [courses, setCourses] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState(null);
-  const [submissions, setSubmissions] = useState([]);
-  const [submissionLoading, setSubmissionLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [form] = Form.useForm();
   const [submitForm] = Form.useForm();
 
@@ -21,24 +19,25 @@ const Assignments = () => {
   const isTeacher = user?.role === 'teacher' || user?.role === 'admin';
   const isStudent = user?.role === 'student';
 
-  const fetchAssignments = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/assignments');
-      setAssignments(res.data || []);
-    } finally { setLoading(false); }
-  };
-
-  const fetchCourses = async () => {
+  const fetchCourses = useCallback(async () => {
     if (isTeacher) {
       try {
         const res = await api.get('/courses');
-        setCourses(res.data || []);
+        setCourses(Array.isArray(res) ? res : (res.data || []));
       } catch { /* ignore */ }
     }
-  };
+  }, [isTeacher]);
 
-  useEffect(() => { fetchAssignments(); fetchCourses(); }, []);
+  const fetchData = useCallback(async (params) => {
+    const res = await api.get('/assignments', { params });
+    if (Array.isArray(res)) {
+      return { data: res, pagination: { total: res.length } };
+    }
+    return {
+      data: res.data || [],
+      pagination: res.pagination || { total: (res.data || []).length },
+    };
+  }, []);
 
   const handleCreate = async (values) => {
     try {
@@ -46,7 +45,7 @@ const Assignments = () => {
       message.success('创建成功');
       setModalOpen(false);
       form.resetFields();
-      fetchAssignments();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
   };
 
@@ -56,7 +55,7 @@ const Assignments = () => {
       message.success('更新成功');
       setEditModalOpen(false);
       setEditingAssignment(null);
-      fetchAssignments();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
   };
 
@@ -64,7 +63,7 @@ const Assignments = () => {
     try {
       await api.delete(`/assignments/${id}`);
       message.success('删除成功');
-      fetchAssignments();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
   };
 
@@ -74,24 +73,6 @@ const Assignments = () => {
       message.success('提交成功');
       setSubmissionModalOpen(false);
       submitForm.resetFields();
-    } catch { /* ignore */ }
-  };
-
-  const handleViewSubmissions = async (assignment) => {
-    setSubmissionLoading(true);
-    try {
-      const res = await api.get('/assignments/submissions', { params: { assignment: assignment._id } });
-      setSubmissions(res.data || []);
-      setEditingAssignment(assignment);
-      setSubmissionModalOpen(true);
-    } finally { setSubmissionLoading(false); }
-  };
-
-  const handleGrade = async (submissionId, score, feedback) => {
-    try {
-      await api.put(`/assignments/submissions/${submissionId}/grade`, { score, feedback });
-      message.success('评分成功');
-      handleViewSubmissions(editingAssignment);
     } catch { /* ignore */ }
   };
 
@@ -117,15 +98,30 @@ const Assignments = () => {
         <Space>
           {isTeacher && (
             <>
-              <Button size="small" icon={<EditOutlined />} onClick={() => { setEditingAssignment(record); form.setFieldsValue({ ...record, deadline: record.deadline ? moment(record.deadline) : null }); setEditModalOpen(true); }}>编辑</Button>
-              <Button size="small" icon={<EyeOutlined />} onClick={() => handleViewSubmissions(record)}>查看提交</Button>
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setEditingAssignment(record);
+                  form.setFieldsValue({ ...record, deadline: record.deadline ? moment(record.deadline) : null });
+                  setEditModalOpen(true);
+                }}
+              >
+                编辑
+              </Button>
               <Popconfirm title="确定删除？" onConfirm={() => handleDelete(record._id)}>
                 <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
               </Popconfirm>
             </>
           )}
           {isStudent && (
-            <Button size="small" type="primary" onClick={() => { setEditingAssignment(record); setSubmissionModalOpen(true); }}>提交</Button>
+            <Button
+              size="small"
+              type="primary"
+              onClick={() => { setEditingAssignment(record); setSubmissionModalOpen(true); }}
+            >
+              提交
+            </Button>
           )}
         </Space>
       ),
@@ -134,16 +130,35 @@ const Assignments = () => {
 
   return (
     <div>
-      <Card
-        title="作业管理"
-        extra={isTeacher && <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>发布作业</Button>}
-      >
-        <Table columns={columns} dataSource={assignments} rowKey="_id" loading={loading} />
-      </Card>
+      <DataTable
+        key={refreshKey}
+        columns={columns}
+        fetchData={fetchData}
+        searchPlaceholder="搜索作业标题"
+        searchFields={['keyword']}
+        extra={
+          isTeacher && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => { fetchCourses(); form.resetFields(); setModalOpen(true); }}
+            >
+              发布作业
+            </Button>
+          )
+        }
+      />
 
       {/* 创建作业 */}
-      <Modal title="发布作业" open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => form.submit()} width={600}>
-        <Form form={form} layout="vertical" onFinish={handleCreate}>
+      <Modal
+        title="发布作业"
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        onOk={() => form.submit()}
+        width={600}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" onFinish={handleCreate} preserve={false}>
           <Form.Item name="title" label="作业标题" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -165,8 +180,15 @@ const Assignments = () => {
       </Modal>
 
       {/* 编辑作业 */}
-      <Modal title="编辑作业" open={editModalOpen} onCancel={() => setEditModalOpen(false)} onOk={() => form.submit()} width={600}>
-        <Form form={form} layout="vertical" onFinish={handleUpdate}>
+      <Modal
+        title="编辑作业"
+        open={editModalOpen}
+        onCancel={() => setEditModalOpen(false)}
+        onOk={() => form.submit()}
+        width={600}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" onFinish={handleUpdate} preserve={false}>
           <Form.Item name="title" label="标题" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -180,8 +202,14 @@ const Assignments = () => {
       </Modal>
 
       {/* 学生提交 */}
-      <Modal title="提交作业" open={submissionModalOpen} onCancel={() => setSubmissionModalOpen(false)} onOk={() => submitForm.submit()}>
-        <Form form={submitForm} layout="vertical" onFinish={handleSubmitAssignment}>
+      <Modal
+        title="提交作业"
+        open={submissionModalOpen}
+        onCancel={() => setSubmissionModalOpen(false)}
+        onOk={() => submitForm.submit()}
+        destroyOnClose
+      >
+        <Form form={submitForm} layout="vertical" onFinish={handleSubmitAssignment} preserve={false}>
           <Form.Item name="content" label="提交内容" rules={[{ required: true }]}>
             <Input.TextArea rows={4} />
           </Form.Item>

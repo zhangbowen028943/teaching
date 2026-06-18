@@ -1,37 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, message, Tag, Popconfirm, Upload } from 'antd';
+import React, { useState, useCallback } from 'react';
+import { Button, Space, Modal, Form, Input, Select, Upload, Popconfirm, message } from 'antd';
 import { PlusOutlined, DeleteOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons';
+import DataTable from '../components/DataTable';
 import api from '../services/api';
 
 const Resources = () => {
-  const [resources, setResources] = useState([]);
   const [courses, setCourses] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState([]);
 
   const user = JSON.parse(localStorage.getItem('user'));
   const isTeacher = user?.role === 'teacher' || user?.role === 'admin';
 
-  const fetchResources = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/resources');
-      setResources(res.data || []);
-    } finally { setLoading(false); }
-  };
-
-  const fetchCourses = async () => {
+  const fetchCourses = useCallback(async () => {
     if (isTeacher) {
       try {
         const res = await api.get('/courses');
-        setCourses(res.data || []);
+        setCourses(Array.isArray(res) ? res : (res.data || []));
       } catch { /* ignore */ }
     }
-  };
+  }, [isTeacher]);
 
-  useEffect(() => { fetchResources(); fetchCourses(); }, []);
+  const fetchData = useCallback(async (params) => {
+    const res = await api.get('/resources', { params });
+    if (Array.isArray(res)) {
+      return { data: res, pagination: { total: res.length } };
+    }
+    return {
+      data: res.data || [],
+      pagination: res.pagination || { total: (res.data || []).length },
+    };
+  }, []);
 
   const handleCreate = async (values) => {
     const formData = new FormData();
@@ -47,7 +48,7 @@ const Resources = () => {
       setModalOpen(false);
       form.resetFields();
       setFileList([]);
-      fetchResources();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
   };
 
@@ -55,7 +56,7 @@ const Resources = () => {
     try {
       await api.delete(`/resources/${id}`);
       message.success('删除成功');
-      fetchResources();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
   };
 
@@ -88,19 +89,34 @@ const Resources = () => {
 
   return (
     <div>
-      <Card
-        title="资源中心"
-        extra={isTeacher && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setFileList([]); setModalOpen(true); }}>
-            上传资源
-          </Button>
-        )}
-      >
-        <Table columns={columns} dataSource={resources} rowKey="_id" loading={loading} />
-      </Card>
+      <DataTable
+        key={refreshKey}
+        columns={columns}
+        fetchData={fetchData}
+        searchPlaceholder="搜索资源标题"
+        searchFields={['keyword']}
+        extra={
+          isTeacher && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => { fetchCourses(); form.resetFields(); setFileList([]); setModalOpen(true); }}
+            >
+              上传资源
+            </Button>
+          )
+        }
+      />
 
-      <Modal title="上传资源" open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => form.submit()} width={500}>
-        <Form form={form} layout="vertical" onFinish={handleCreate}>
+      <Modal
+        title="上传资源"
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        onOk={() => form.submit()}
+        width={500}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" onFinish={handleCreate} preserve={false}>
           <Form.Item name="title" label="资源标题" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -113,7 +129,12 @@ const Resources = () => {
             </Select>
           </Form.Item>
           <Form.Item label="文件" required>
-            <Upload fileList={fileList} onChange={({ fileList }) => setFileList(fileList)} beforeUpload={() => false} maxCount={1}>
+            <Upload
+              fileList={fileList}
+              onChange={({ fileList: fl }) => setFileList(fl)}
+              beforeUpload={() => false}
+              maxCount={1}
+            >
               <Button icon={<UploadOutlined />}>选择文件</Button>
             </Upload>
           </Form.Item>

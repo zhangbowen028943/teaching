@@ -1,38 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import React, { useState, useCallback } from 'react';
+import { Button, Space, Modal, Form, Input, Select, InputNumber, Tag, Popconfirm, message } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import DataTable from '../components/DataTable';
 import api from '../services/api';
 import useAuth from '../hooks/useAuth';
 
 const Courses = () => {
   const { isAdmin, isTeacher, user } = useAuth();
-  const [courses, setCourses] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [form] = Form.useForm();
 
-  const fetchCourses = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/courses');
-      setCourses(res.data || []);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchTeachers = async () => {
+  const fetchTeachers = useCallback(async () => {
     if (isAdmin) {
       try {
         const res = await api.get('/users/teachers');
         setTeachers(res.data || []);
       } catch { /* ignore */ }
     }
-  };
+  }, [isAdmin]);
 
-  useEffect(() => { fetchCourses(); fetchTeachers(); }, []);
+  // 打开创建/编辑弹窗时加载教师列表
+  const openModal = useCallback((record) => {
+    if (isAdmin) fetchTeachers();
+    if (record) {
+      setEditingCourse(record);
+      form.setFieldsValue(record);
+    } else {
+      setEditingCourse(null);
+      form.resetFields();
+    }
+    setModalOpen(true);
+  }, [isAdmin, fetchTeachers, form]);
+
+  const fetchData = useCallback(async (params) => {
+    const res = await api.get('/courses', { params });
+    // API 返回 { data: [...], pagination: { total: N } } 或直接是数组
+    if (Array.isArray(res)) {
+      return { data: res, pagination: { total: res.length } };
+    }
+    return {
+      data: res.data || [],
+      pagination: res.pagination || { total: (res.data || []).length },
+    };
+  }, []);
 
   const handleSubmit = async (values) => {
     try {
@@ -46,7 +59,7 @@ const Courses = () => {
       setModalOpen(false);
       form.resetFields();
       setEditingCourse(null);
-      fetchCourses();
+      setRefreshKey((k) => k + 1);
     } catch { /* api interceptor handles error */ }
   };
 
@@ -54,7 +67,7 @@ const Courses = () => {
     try {
       await api.delete(`/courses/${id}`);
       message.success('删除成功');
-      fetchCourses();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
   };
 
@@ -62,7 +75,7 @@ const Courses = () => {
     try {
       await api.post(`/courses/${id}/join`);
       message.success('选课成功');
-      fetchCourses();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
   };
 
@@ -70,7 +83,7 @@ const Courses = () => {
     try {
       await api.post(`/courses/${id}/leave`);
       message.success('退课成功');
-      fetchCourses();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
   };
 
@@ -89,7 +102,7 @@ const Courses = () => {
         <Space>
           {(isAdmin || (isTeacher && record.teacher?._id === user?.id)) && (
             <>
-              <Button size="small" icon={<EditOutlined />} onClick={() => { setEditingCourse(record); form.setFieldsValue(record); setModalOpen(true); }}>编辑</Button>
+              <Button size="small" icon={<EditOutlined />} onClick={() => openModal(record)}>编辑</Button>
               <Popconfirm title="确定删除？" onConfirm={() => handleDelete(record._id)}>
                 <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
               </Popconfirm>
@@ -107,18 +120,20 @@ const Courses = () => {
 
   return (
     <div>
-      <Card
-        title="课程管理"
+      <DataTable
+        key={refreshKey}
+        columns={columns}
+        fetchData={fetchData}
+        searchPlaceholder="搜索课程名称或课程代码"
+        searchFields={['keyword']}
         extra={
           (isAdmin || isTeacher) && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingCourse(null); form.resetFields(); setModalOpen(true); }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
               创建课程
             </Button>
           )
         }
-      >
-        <Table columns={columns} dataSource={courses} rowKey="_id" loading={loading} />
-      </Card>
+      />
 
       <Modal
         title={editingCourse ? '编辑课程' : '创建课程'}
@@ -126,8 +141,9 @@ const Courses = () => {
         onCancel={() => { setModalOpen(false); setEditingCourse(null); form.resetFields(); }}
         onOk={() => form.submit()}
         width={600}
+        destroyOnClose
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} preserve={false}>
           <Form.Item name="name" label="课程名称" rules={[{ required: true, message: '请输入' }]}>
             <Input placeholder="例如：高等数学" />
           </Form.Item>

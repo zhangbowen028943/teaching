@@ -1,24 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, message, Tag, Popconfirm } from 'antd';
+import React, { useState, useCallback } from 'react';
+import { Button, Space, Modal, Form, Input, Tag, Popconfirm, message } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import DataTable from '../components/DataTable';
 import api from '../services/api';
 
 const Teachers = () => {
-  const [teachers, setTeachers] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [form] = Form.useForm();
 
-  const fetchTeachers = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/users?role=teacher');
-      setTeachers(res.data || []);
-    } finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetchTeachers(); }, []);
+  const fetchData = useCallback(async (params) => {
+    const res = await api.get('/users', { params: { ...params, role: 'teacher' } });
+    if (Array.isArray(res)) {
+      return { data: res, pagination: { total: res.length } };
+    }
+    return {
+      data: res.data || [],
+      pagination: res.pagination || { total: (res.data || []).length },
+    };
+  }, []);
 
   const handleSubmit = async (values) => {
     try {
@@ -32,7 +33,7 @@ const Teachers = () => {
       setModalOpen(false);
       form.resetFields();
       setEditingUser(null);
-      fetchTeachers();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
   };
 
@@ -40,8 +41,19 @@ const Teachers = () => {
     try {
       await api.delete(`/users/${id}`);
       message.success('删除成功');
-      fetchTeachers();
+      setRefreshKey((k) => k + 1);
     } catch { /* ignore */ }
+  };
+
+  const openModal = (record) => {
+    if (record) {
+      setEditingUser(record);
+      form.setFieldsValue(record);
+    } else {
+      setEditingUser(null);
+      form.resetFields();
+    }
+    setModalOpen(true);
   };
 
   const columns = [
@@ -56,7 +68,7 @@ const Teachers = () => {
       title: '操作', key: 'action',
       render: (_, record) => (
         <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => { setEditingUser(record); form.setFieldsValue(record); setModalOpen(true); }}>编辑</Button>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openModal(record)}>编辑</Button>
           <Popconfirm title="确定删除？" onConfirm={() => handleDelete(record._id)}>
             <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
@@ -67,20 +79,27 @@ const Teachers = () => {
 
   return (
     <div>
-      <Card
-        title="教师管理"
-        extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingUser(null); form.resetFields(); setModalOpen(true); }}>添加教师</Button>}
-      >
-        <Table columns={columns} dataSource={teachers} rowKey="_id" loading={loading} />
-      </Card>
+      <DataTable
+        key={refreshKey}
+        columns={columns}
+        fetchData={fetchData}
+        searchPlaceholder="搜索教师姓名或邮箱"
+        searchFields={['keyword']}
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
+            添加教师
+          </Button>
+        }
+      />
 
       <Modal
         title={editingUser ? '编辑教师' : '添加教师'}
         open={modalOpen}
         onCancel={() => { setModalOpen(false); setEditingUser(null); form.resetFields(); }}
         onOk={() => form.submit()}
+        destroyOnClose
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} preserve={false}>
           <Form.Item name="username" label="姓名" rules={[{ required: true }]}>
             <Input />
           </Form.Item>

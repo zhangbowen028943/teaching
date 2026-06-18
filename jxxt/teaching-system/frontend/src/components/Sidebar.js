@@ -11,6 +11,7 @@ import {
   ScheduleOutlined,
 } from '@ant-design/icons';
 import useAuth from '../hooks/useAuth';
+import { useThemeContext } from '../context/ThemeContext';
 
 const { Sider } = Layout;
 
@@ -18,6 +19,7 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin, isTeacher, isAuthenticated } = useAuth();
+  const { isDark } = useThemeContext();
 
   if (!isAuthenticated) return null;
 
@@ -47,13 +49,20 @@ const Sidebar = () => {
   };
 
   return (
-    <Sider width={200} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
+    <Sider
+      width={200}
+      style={{
+        background: isDark ? '#141414' : '#fff',
+        borderRight: isDark ? '1px solid #303030' : '1px solid #f0f0f0',
+      }}
+    >
       <Menu
         mode="inline"
         selectedKeys={[location.pathname === '/' ? '/' : '/' + location.pathname.split('/')[1]]}
         style={{ height: '100%', paddingTop: '16px' }}
         items={getMenuItems()}
         onClick={({ key }) => navigate(key)}
+        theme={isDark ? 'dark' : 'light'}
       />
     </Sider>
   );

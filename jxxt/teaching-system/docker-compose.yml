@@ -1,0 +1,94 @@
+version: "3.8"
+
+services:
+  # ==========================================
+  # MongoDB 数据库服务
+  # ==========================================
+  mongodb:
+    image: mongo:6
+    container_name: jxxt-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - app-network
+    environment:
+      # 可选：设置 MongoDB 初始 root 用户（生产环境建议启用）
+      # MONGO_INITDB_ROOT_USERNAME: admin
+      # MONGO_INITDB_ROOT_PASSWORD: changeme
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ==========================================
+  # 后端 API 服务
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jxxt-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env.docker
+    environment:
+      - PORT=5000
+      - MONGODB_URI=mongodb://mongodb:27017/teaching-system
+      - JWT_SECRET=docker_jwt_secret_change_in_production
+      - NODE_ENV=production
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    networks:
+      - app-network
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:5000/health || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ==========================================
+  # 前端 Web 服务
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: jxxt-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+# ==========================================
+# 数据卷
+# ==========================================
+volumes:
+  mongodb_data:
+    driver: local
+  backend_uploads:
+    driver: local
+  backend_logs:
+    driver: local
+
+# ==========================================
+# 网络
+# ==========================================
+networks:
+  app-network:
+    driver: bridge

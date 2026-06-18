@@ -6,10 +6,14 @@ const fs = require('fs');
 exports.getResources = async (req, res, next) => {
   try {
     const { course, search } = req.query;
+    const { skip, limit, sort, search: paginationSearch } = req.pagination;
     const filter = {};
 
     if (course) filter.course = course;
-    if (search) filter.title = { $regex: search, $options: 'i' };
+
+    // 优先使用 pagination 的 search，其次使用 query 中的 search
+    const searchTerm = paginationSearch || search;
+    if (searchTerm) filter.title = { $regex: searchTerm, $options: 'i' };
 
     if (req.user.role === 'student') {
       const courses = await Course.find({ students: req.user._id }).select('_id');
@@ -19,12 +23,17 @@ exports.getResources = async (req, res, next) => {
       filter.course = { $in: courses.map((c) => c._id) };
     }
 
-    const resources = await Resource.find(filter)
-      .populate('course', 'name code')
-      .populate('uploadedBy', 'username')
-      .sort({ createdAt: -1 });
+    const [resources, total] = await Promise.all([
+      Resource.find(filter)
+        .populate('course', 'name code')
+        .populate('uploadedBy', 'username')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+      Resource.countDocuments(filter),
+    ]);
 
-    res.json({ success: true, data: resources });
+    res.paginate(resources, total);
   } catch (error) {
     next(error);
   }

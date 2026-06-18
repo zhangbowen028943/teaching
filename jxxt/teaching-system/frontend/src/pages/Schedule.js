@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Tag } from 'antd';
 import api from '../services/api';
-import moment from 'moment';
 
 const dayMap = ['日', '一', '二', '三', '四', '五', '六'];
 

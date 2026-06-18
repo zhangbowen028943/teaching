@@ -1,5 +1,7 @@
+const logger = require('../config/logger');
+
 const errorHandler = (err, req, res, next) => {
-  console.error(err.stack);
+  logger.error(err.stack);
 
   // Mongoose 验证错误
   if (err.name === 'ValidationError') {
